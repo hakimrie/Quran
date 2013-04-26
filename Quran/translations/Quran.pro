@@ -1,0 +1,1 @@
+include (../Quran.pro)
