@@ -9,7 +9,24 @@
 #include <QRegExp>
 
 const char* const AyatDataModel::mQuranDatabase = "data/quran.db";
-
+const QString AyatDataModel::QUERY_SELECT_NOTES = "SELECT Quran.SuraID as surah, Quran.VerseID as ayat, AyahText as ayatText, note, TranslationText as translationText \
+		 FROM Quran join (select * from translationsdata where languageID = %1) as translationsdata \
+		 on Quran.SuraID = CAST(translationsdata.SuraID as INTEGER)  and Quran.VerseID = CAST(translationsdata.VerseID as INTEGER) \
+		 WHERE TRIM(note) <> '' and note IS NOT NULL ";
+const QString AyatDataModel::QUERY_UPDATE_NOTES = "update Quran set note= '%1' where SuraID = %2 and VerseID = %3";
+const QString AyatDataModel::QUERY_DELETE_NOTES = "update Quran set note= '' where SuraID = %1 and VerseID = %2";
+const QString AyatDataModel::QUERY_SELECT_ALL_AYAT = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
+		(select * from Quran where Quran.SuraID = %1) as surah \
+		left join (select * from translationsdata where languageID = %2 and CAST(SuraID as INTEGER) = %3) as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER) order by surah.VerseID desc";
+const QString AyatDataModel::QUERY_SELECT_ALL_BOOKMARK = "select Quran.SuraID as surah, Quran.VerseID as ayat, Quran.AyahText as ayahText, Quran.bookmarked as bookmarked, Surah.SuraName as surahName from Quran  left join Surah on Quran.SuraID = Surah.SuraID where bookmarked = 'true' ";
+const QString AyatDataModel::QUERY_UPDATE_ADD_BOOKMARK = "update Quran set bookmarked='true'  where SuraID = %1 and VerseID = %2" ;
+const QString AyatDataModel::QUERY_UPDATE_REMOVE_BOOKMARK = "update Quran set bookmarked='false'  where SuraID = %1 and VerseID = %2";
+const QString AyatDataModel::QUERY_SEARCH_TRANSLATION = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
+    	(select * from translationsdata where translationsdata.TranslationText match '%1' and translationsdata.languageID = %2 ) as translationsdata \
+    		left join (select * from Quran) as surah on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER)";
+const QString AyatDataModel::QUERY_SEARCH_AYAT = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
+		(select * from Quran where Quran.AyahTextWithoutTashkeel match '%1'  ) as surah \
+		left join (select * from translationsdata where languageID = %2) as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER)";
 AyatDataModel::AyatDataModel() :
 		m_pSqlConnection(NULL), m_pSqlWorker(NULL), mQuery(""), mConnectionName("quran") {
 
@@ -26,10 +43,9 @@ AyatDataModel::~AyatDataModel() {
 	}
 }
 
-bool AyatDataModel::addBookmark(QVariantList indexPath, QString surah,
-		QString ayat) {
-	QString query = "update Quran set bookmarked='true'  where SuraID = "
-			+ surah + " and VerseID = " + ayat;
+bool AyatDataModel::addBookmark(QVariantList indexPath, QString surah, QString ayat) {
+	QString query = QString(QUERY_UPDATE_ADD_BOOKMARK).arg(surah).arg(ayat);//"update Quran set bookmarked='true'  where SuraID = " + surah + " and VerseID = " + ayat;
+
 	// execute query
 	DataAccessReply reply = m_pSqlConnection->executeAndWait(query);
 
@@ -53,10 +69,8 @@ bool AyatDataModel::addBookmark(QVariantList indexPath, QString surah,
 
 }
 
-bool AyatDataModel::removeBookmark(QVariantList indexPath, QString surah,
-		QString ayat) {
-	QString query = "update Quran set bookmarked='false'  where SuraID ="
-				+ surah + " and VerseID = " + ayat;
+bool AyatDataModel::removeBookmark(QVariantList indexPath, QString surah, QString ayat) {
+	QString query = QString(QUERY_UPDATE_REMOVE_BOOKMARK).arg(surah).arg(ayat); //"update Quran set bookmarked='false'  where SuraID =" + surah + " and VerseID = " + ayat;
 	// execute query
 	DataAccessReply reply = m_pSqlConnection->executeAndWait(query);
 
@@ -82,8 +96,7 @@ bool AyatDataModel::removeBookmark(QVariantList indexPath, QString surah,
 
 bool AyatDataModel::deleteBookmark(QVariantList indexPath, QString surah,
 		QString ayat) {
-	QString query = "update Quran set bookmarked='false'  where SuraID ="
-				+ surah + " and VerseID = " + ayat;
+	QString query = QString(QUERY_UPDATE_REMOVE_BOOKMARK).arg(surah).arg(ayat);//"update Quran set bookmarked='false'  where SuraID =" + surah + " and VerseID = " + ayat;
 	// execute query
 	DataAccessReply reply = m_pSqlConnection->executeAndWait(query);
 
@@ -110,8 +123,7 @@ bool AyatDataModel::deleteBookmark(QVariantList indexPath, QString surah,
 
 bool AyatDataModel::updateNote(QVariantList indexPath, QString surah,
 				QString ayat, QString note){
-	QString query = "update Quran set note= '"+note+"' where SuraID = "
-					+ surah + " and VerseID = " + ayat;
+	QString query = QString(QUERY_UPDATE_NOTES).arg(note).arg(surah).arg(ayat);// "update Quran set note= '"+note+"' where SuraID = " + surah + " and VerseID = " + ayat;
 		// execute query
 		DataAccessReply reply = m_pSqlConnection->executeAndWait(query);
 
@@ -135,8 +147,7 @@ bool AyatDataModel::updateNote(QVariantList indexPath, QString surah,
 
 bool AyatDataModel::deleteNote(QVariantList indexPath, QString surah,
 		QString ayat){
-	QString query = "update Quran set note= '' where SuraID = "
-						+ surah + " and VerseID = " + ayat;
+	QString query =  QString(QUERY_DELETE_NOTES).arg(surah).arg(ayat);//"update Quran set note= '' where SuraID = " + surah + " and VerseID = " + ayat;
 			// execute query
 			DataAccessReply reply = m_pSqlConnection->executeAndWait(query);
 
@@ -165,21 +176,22 @@ void AyatDataModel::loadData(QString surahNumber) {
 	        translationId = settings.value("LanguageSettings").toString();
 	    }
 
-
-	mQuery = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
-	        		(select * from Quran where Quran.SuraID = "
-					+ surahNumber
-					+ "  ) as surah \
-	        		left join (select * from translationsdata where languageID = "+translationId+" and CAST(SuraID as INTEGER) = "+surahNumber+") as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER) order by surah.VerseID desc";
+	// kita butuh casting macem2 karena salah input data dengan format text untuk beberapa surah number/ayat
+//	mQuery = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
+//	        		(select * from Quran where Quran.SuraID = "
+//					+ surahNumber
+//					+ "  ) as surah \
+//	        		left join (select * from translationsdata where languageID = "+translationId+" and CAST(SuraID as INTEGER) = "+surahNumber+") as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER) order by surah.VerseID desc";
+	mQuery = QString(QUERY_SELECT_ALL_AYAT).arg(surahNumber).arg(translationId).arg(surahNumber);
 	qDebug() << "query = " + mQuery;
-	QString query2 = "select * from Quran where SuraID = " + surahNumber
-			+ " order by VerseID desc";
+//	QString query2 = "select * from Quran where SuraID = " + surahNumber
+//			+ " order by VerseID desc";
 	emit loadSQLData(mQuery);
 }
 
 void AyatDataModel::loadBookmarks() {
-	mQuery = //"select SuraID as surah, VerseID as ayat, ayahText as ayahText, bookmarked from Quran where Quran.bookmarked = 'true'";
-			"select Quran.SuraID as surah, Quran.VerseID as ayat, Quran.AyahText as ayahText, Quran.bookmarked as bookmarked, Surah.SuraName as surahName from Quran  left join Surah on Quran.SuraID = Surah.SuraID where bookmarked = 'true' ";
+	mQuery = QUERY_SELECT_ALL_BOOKMARK;
+			//"select Quran.SuraID as surah, Quran.VerseID as ayat, Quran.AyahText as ayahText, Quran.bookmarked as bookmarked, Surah.SuraName as surahName from Quran  left join Surah on Quran.SuraID = Surah.SuraID where bookmarked = 'true' ";
 	this->mConnectionName = "bookmarks";
 	emit loadSQLData(mQuery);
 }
@@ -191,19 +203,15 @@ void AyatDataModel::loadNotes() {
 	if (!settings.value("LanguageSettings").isNull()) {
 		translationId = settings.value("LanguageSettings").toString();
 	}
-	mQuery = "SELECT Quran.SuraID as surah, Quran.VerseID as ayat, AyahText as ayatText, note, TranslationText as translationText \
-			 FROM Quran join (select * from translationsdata where languageID = " + translationId+ ") as translationsdata \
-			 on Quran.SuraID = CAST(translationsdata.SuraID as INTEGER)  and Quran.VerseID = CAST(translationsdata.VerseID as INTEGER) \
-			 WHERE TRIM(note) <> '' and note IS NOT NULL ";
+//	mQuery = "SELECT Quran.SuraID as surah, Quran.VerseID as ayat, AyahText as ayatText, note, TranslationText as translationText \
+//			 FROM Quran join (select * from translationsdata where languageID = " + translationId+ ") as translationsdata \
+//			 on Quran.SuraID = CAST(translationsdata.SuraID as INTEGER)  and Quran.VerseID = CAST(translationsdata.VerseID as INTEGER) \
+//			 WHERE TRIM(note) <> '' and note IS NOT NULL ";
+
+	mQuery = QString(QUERY_SELECT_NOTES).arg(translationId);
 	this->mConnectionName = "notes";
 	emit loadSQLData(mQuery);
 }
-//void AyatDataModel::removeLoadingItem() {
-//	modelList.removeLast();
-//	QVariantList indexPath;
-//	indexPath.append(modelList.size());
-//	emit itemRemoved(indexPath);
-//}
 
 // Creates the SQL connection used for requesting SQL data and connects
 // the SqlConnection::reply() signal to a custom clot used for handling the reply data.
@@ -269,9 +277,11 @@ void AyatDataModel::onReloadDatabase() {
 		translationId = settings.value("LanguageSettings").toString();
 	}
 
-	mQuery ="select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
-			(select * from Quran where Quran.SuraID = "+ surahNumber + "  ) as surah \
-		    left join (select * from translationsdata where languageID = "+translationId+" and CAST(SuraID as INTEGER) = "+surahNumber+") as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER) order by surah.VerseID desc";
+//	mQuery ="select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
+//			(select * from Quran where Quran.SuraID = "+ surahNumber + "  ) as surah \
+//		    left join (select * from translationsdata where languageID = "+translationId+" and CAST(SuraID as INTEGER) = "+surahNumber+") as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER) order by surah.VerseID desc";
+
+	mQuery = QString(QUERY_SELECT_ALL_AYAT).arg(surahNumber).arg(translationId).arg(surahNumber);
 	qDebug() << "requery = " + mQuery;
 
 	emit loadSQLData(mQuery);
@@ -285,13 +295,15 @@ void AyatDataModel::searchAyat(const QString keywords){
 		translationId = settings.value("LanguageSettings").toString();
 	}
 
-	mQuery = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
-	        	(select * from translationsdata where translationsdata.TranslationText match '"+keywords+"' and translationsdata.languageID = "+translationId+" ) as translationsdata \
-	        		left join (select * from Quran) as surah on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER)";
+//	mQuery = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
+//	        	(select * from translationsdata where translationsdata.TranslationText match '"+keywords+"' and translationsdata.languageID = "+translationId+" ) as translationsdata \
+//	        		left join (select * from Quran) as surah on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER)";
+	mQuery = QString(QUERY_SEARCH_TRANSLATION).arg(keywords).arg(translationId);
 	if (isArabicText(keywords)){
-		mQuery = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
-			        		(select * from Quran where Quran.AyahTextWithoutTashkeel match '"+keywords+"'  ) as surah \
-			        		left join (select * from translationsdata where languageID = "+translationId+") as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER)";
+//		mQuery = "select surah.bookmarked as bookmarked, surah.note as note, surah.SuraID as surahNumber, surah.VerseID as ayatNumber, surah.AyahText as ayatText, translationsdata.TranslationText as translationText from \
+//			        		(select * from Quran where Quran.AyahTextWithoutTashkeel match '"+keywords+"'  ) as surah \
+//			        		left join (select * from translationsdata where languageID = "+translationId+") as translationsdata on surah.SuraID = CAST(translationsdata.SuraID as INTEGER)  and surah.VerseID = CAST(translationsdata.VerseID as INTEGER)";
+		mQuery = QString(QUERY_SEARCH_AYAT).arg(keywords).arg(translationId);
 	}
 
 	mConnectionName = "searchAyat";
